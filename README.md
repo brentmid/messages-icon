@@ -29,14 +29,16 @@ To create a persistent "app" in Edge: navigate to the URL, then **Settings > App
 
 HTTPS is required for the PWA Badging API, which updates the dock icon badge. On first run with `--https`, a self-signed certificate is auto-generated in `./certs/`.
 
-To avoid browser certificate warnings, trust it in your system keychain:
+To avoid browser certificate warnings, copy the cert to each **client machine** and trust it there:
 
 ```bash
+# On the client machine (not the server):
+scp your-mac:~/path/to/messages-icon/certs/cert.pem /tmp/messages-icon-cert.pem
 sudo security add-trusted-cert -d -r trustRoot \
-  -k /Library/Keychains/System.keychain certs/cert.pem
+  -k /Library/Keychains/System.keychain /tmp/messages-icon-cert.pem
 ```
 
-You only need to do this once. The certificate is valid for 10 years.
+You only need to do this once per client. The certificate is valid for 10 years. The cert automatically includes `localhost` and the server's hostname as SANs. Use `--hostname` to add extra hostnames.
 
 ## Auto-Start (LaunchAgent)
 
@@ -67,6 +69,7 @@ To customize port, poll interval, or bind address, add flags to the `ProgramArgu
 | Bind address | `--bind` | `MESSAGES_ICON_BIND` | `0.0.0.0` |
 | Enable HTTPS | `--https` | `MESSAGES_ICON_HTTPS` | `false` |
 | Certificate directory | `--cert-dir` | `MESSAGES_ICON_CERT_DIR` | `./certs` |
+| Extra TLS hostnames | `--hostname` | *(none)* | *(none, repeatable)* |
 
 ```bash
 # Examples
@@ -78,7 +81,7 @@ python3 server.py --bind 127.0.0.1  # localhost only
 
 The server uses the macOS Dock Accessibility API (via `osascript`) to read the Messages app's dock badge count — the exact number macOS displays on the Messages icon in your Dock. This is more reliable than `lsappinfo` (which returns NULL for Messages on recent macOS) or querying the Messages SQLite database directly (which returns stale data due to iCloud sync).
 
-The webpage polls `/api/count` at the configured interval and uses the HTML Canvas API to render a dynamic favicon: a green iMessage-style speech bubble with a red badge showing the unread count.
+The webpage polls `/api/count` at the configured interval. When installed as a PWA (via Edge or Chrome) over HTTPS, it uses the Badging API (`navigator.setAppBadge()`) to show the unread count on the dock icon. The favicon is a green iMessage-style speech bubble rendered via Canvas.
 
 ### API
 
@@ -88,10 +91,10 @@ The webpage polls `/api/count` at the configured interval and uses the HTML Canv
 {"unread": 3}
 ```
 
-Or, if Messages isn't running:
+Or, if there's an issue (e.g., Accessibility permission not granted):
 
 ```json
-{"unread": 0, "error": "Messages app is not running"}
+{"unread": 0, "error": "Could not read Messages badge (check Accessibility permissions)"}
 ```
 
 ## Privacy
