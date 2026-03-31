@@ -6,9 +6,10 @@ Pin it as a tab, or create a web app (e.g., in Microsoft Edge or Chrome) to get 
 
 ## Requirements
 
-- **macOS** (uses `lsappinfo`, a built-in macOS utility)
+- **macOS** (uses the Dock Accessibility API via `osascript`)
 - **Python 3.11+** (stdlib only — no `pip install` needed)
 - **Messages app** must be running (the server reads the dock badge count)
+- **Accessibility permission** for Terminal (or whichever app runs the server) — grant in System Settings > Privacy & Security > Accessibility
 
 ## Quick Start
 
@@ -36,7 +37,7 @@ python3 server.py --bind 127.0.0.1  # localhost only
 
 ## How It Works
 
-The server calls `lsappinfo` to read the Messages app's dock badge count — the same number macOS displays on the Messages icon in your Dock. This is more reliable than querying the Messages SQLite database directly, which can return stale data due to iCloud sync.
+The server uses the macOS Dock Accessibility API (via `osascript`) to read the Messages app's dock badge count — the exact number macOS displays on the Messages icon in your Dock. This is more reliable than `lsappinfo` (which returns NULL for Messages on recent macOS) or querying the Messages SQLite database directly (which returns stale data due to iCloud sync).
 
 The webpage polls `/api/count` at the configured interval and uses the HTML Canvas API to render a dynamic favicon: a green iMessage-style speech bubble with a red badge showing the unread count.
 
