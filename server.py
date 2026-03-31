@@ -2,27 +2,11 @@
 """messages-icon: Apple Messages unread count as a dynamic browser favicon."""
 
 import argparse
-import base64
 import json
 import os
 import re
 import subprocess
 from http.server import BaseHTTPRequestHandler, HTTPServer
-
-# Green bubble SVG for apple-touch-icon and static favicon fallback
-BUBBLE_SVG = '''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <path d="M8 12 C8 6, 14 2, 22 2 L42 2 C50 2, 56 6, 56 12 L56 32
-           C56 38, 50 42, 42 42 L20 42 L12 54 L14 42 L12 42
-           C6 42, 2 38, 2 32 L2 16 C2 10, 6 6, 12 6 Z"
-        fill="#34C759" stroke="none"/>
-  <path d="M8 10 C8 5, 13 2, 20 2 L44 2 C51 2, 56 5, 56 10 L56 30
-           C56 35, 51 38, 44 38 L18 38 L10 50 L12 38 C5 38, 2 35, 2 30
-           L2 14 C2 9, 5 6, 10 6 Z"
-        fill="#34C759" stroke="none"/>
-</svg>'''
-
-# Pre-encode the SVG as a PNG-equivalent data URI for apple-touch-icon
-BUBBLE_SVG_B64 = base64.b64encode(BUBBLE_SVG.encode()).decode()
 
 HTML_TEMPLATE = '''<!DOCTYPE html>
 <html lang="en">
@@ -32,7 +16,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="Messages">
     <title>Messages</title>
-    <link id="favicon" rel="icon" type="image/png" href="data:image/svg+xml;base64,{bubble_svg_b64}">
+    <link id="favicon" rel="icon" type="image/png" href="/apple-touch-icon.png">
+    <link id="favicon-32" rel="icon" type="image/png" sizes="32x32" href="/apple-touch-icon.png">
     <link rel="apple-touch-icon" href="/apple-touch-icon.png">
     <style>
         * {{ margin: 0; padding: 0; box-sizing: border-box; }}
@@ -82,33 +67,35 @@ const canvas = document.getElementById('favicon-canvas');
 const ctx = canvas.getContext('2d');
 
 function drawFavicon(count) {{
-    ctx.clearRect(0, 0, 64, 64);
+    // Render at 2x for retina sharpness, display as 32x32 favicon
+    const size = 64;
+    canvas.width = size;
+    canvas.height = size;
+    ctx.clearRect(0, 0, size, size);
 
-    // Green speech bubble
+    // Green speech bubble (iMessage style)
     ctx.fillStyle = '#34C759';
     ctx.beginPath();
-    ctx.moveTo(20, 4);
-    ctx.quadraticCurveTo(4, 4, 4, 16);
-    ctx.lineTo(4, 32);
-    ctx.quadraticCurveTo(4, 44, 16, 44);
-    ctx.lineTo(16, 44);
-    ctx.lineTo(10, 56);
-    ctx.lineTo(26, 44);
-    ctx.lineTo(44, 44);
-    ctx.quadraticCurveTo(58, 44, 58, 32);
-    ctx.lineTo(58, 16);
-    ctx.quadraticCurveTo(58, 4, 44, 4);
-    ctx.closePath();
+    // Main bubble body — rounded rectangle
+    ctx.roundRect(2, 2, 52, 38, 10);
+    ctx.fill();
+    // Tail — bottom-left pointer
+    ctx.beginPath();
+    ctx.moveTo(8, 36);
+    ctx.lineTo(2, 50);
+    ctx.lineTo(22, 38);
     ctx.fill();
 
     if (count > 0) {{
         const label = count > 99 ? '99+' : String(count);
 
-        // Red badge circle
-        const badgeRadius = label.length > 2 ? 16 : 14;
+        // Red badge — pill shape for multi-digit, circle for single
         ctx.fillStyle = '#FF3B30';
+        const bx = 46, by = 12;
+        const bh = 22;
+        const bw = Math.max(bh, label.length * 10 + 10);
         ctx.beginPath();
-        ctx.arc(48, 14, badgeRadius, 0, Math.PI * 2);
+        ctx.roundRect(bx - bw/2, by - bh/2, bw, bh, bh/2);
         ctx.fill();
 
         // White border
@@ -116,16 +103,21 @@ function drawFavicon(count) {{
         ctx.lineWidth = 2;
         ctx.stroke();
 
-        // Count text
+        // Count text — bold, sized to fit
+        const fontSize = label.length > 2 ? 11 : 14;
         ctx.fillStyle = '#FFFFFF';
-        ctx.font = `bold ${{label.length > 2 ? 12 : 16}}px -apple-system, sans-serif`;
+        ctx.font = `bold ${{fontSize}}px -apple-system, "SF Pro", sans-serif`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText(label, 48, 14);
+        ctx.fillText(label, bx, by + 1);
     }}
 
-    // Update favicon
+    // Update favicon link
     document.getElementById('favicon').href = canvas.toDataURL('image/png');
+
+    // Also update 32x32 variant for browsers that prefer it
+    const link32 = document.getElementById('favicon-32');
+    if (link32) link32.href = canvas.toDataURL('image/png');
 }}
 
 function update(data) {{
@@ -171,10 +163,9 @@ setInterval(poll, POLL_INTERVAL);
 # Pre-render a 180x180 apple-touch-icon as an SVG served with image/svg+xml
 APPLE_TOUCH_ICON_SVG = '''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180">
   <rect width="180" height="180" rx="40" fill="#1c1c1e"/>
-  <g transform="translate(30, 25) scale(1.8)">
-    <path d="M20 4 Q4 4 4 16 L4 32 Q4 44 16 44 L16 44 L10 56 L26 44 L44 44
-             Q58 44 58 32 L58 16 Q58 4 44 4 Z"
-          fill="#34C759"/>
+  <g transform="translate(24, 22) scale(2.4)">
+    <rect x="2" y="2" width="52" height="38" rx="10" fill="#34C759"/>
+    <polygon points="8,36 2,50 22,38" fill="#34C759"/>
   </g>
 </svg>'''
 
@@ -239,7 +230,6 @@ class Handler(BaseHTTPRequestHandler):
     def _serve_html(self):
         page = HTML_TEMPLATE.format(
             poll_interval=self.poll_interval,
-            bubble_svg_b64=BUBBLE_SVG_B64,
         )
         body = page.encode("utf-8")
         self.send_response(200)
