@@ -21,6 +21,26 @@ Then open `http://localhost:8429` in your browser. From another machine on your 
 
 To create a persistent "app" in Edge: navigate to the URL, then **Settings > Apps > Install this site as an app**.
 
+## Auto-Start (LaunchAgent)
+
+To start the server automatically on login, copy and customize the example plist:
+
+```bash
+# Edit the example — update Label, Python path, and script path for your system
+cp messages-icon.plist.example ~/Library/LaunchAgents/com.example.messages-icon.plist
+vi ~/Library/LaunchAgents/com.example.messages-icon.plist
+
+# Load
+launchctl load ~/Library/LaunchAgents/com.example.messages-icon.plist
+
+# Unload
+launchctl unload ~/Library/LaunchAgents/com.example.messages-icon.plist
+```
+
+To customize port, poll interval, or bind address, add flags to the `ProgramArguments` array in the plist (e.g., `--port`, `--poll-interval`, `--bind`).
+
+> **Note:** The Python process running the server needs **Accessibility permission** (System Settings > Privacy & Security > Accessibility) to read the dock badge.
+
 ## Configuration
 
 | Option | CLI Arg | Env Var | Default |
