@@ -180,30 +180,42 @@ APPLE_TOUCH_ICON_SVG = '''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1
 
 
 def get_unread_count():
-    """Read the Messages dock badge count via lsappinfo.
+    """Read the Messages dock badge count via the Dock accessibility API.
+
+    Uses AppleScript to query the AXStatusLabel attribute of the Messages
+    element in the Dock. This matches the actual dock badge exactly, unlike
+    lsappinfo (which returns NULL for Messages on macOS Tahoe) or direct
+    SQLite queries on chat.db (which return stale iCloud sync data).
+
+    Requires: Accessibility permission for the calling process.
 
     Returns:
         tuple: (count: int, error: str | None)
     """
     try:
         result = subprocess.run(
-            ["lsappinfo", "-all", "info", "-only", "StatusLabel",
-             "com.apple.MobileSMS"],
+            ["osascript", "-e",
+             'tell application "System Events" to tell process "Dock" '
+             'to return value of attribute "AXStatusLabel" of UI element '
+             '"Messages" of list 1'],
             capture_output=True, text=True, timeout=5,
         )
         output = result.stdout.strip()
-        if not output:
-            return 0, "Messages app is not running"
-        if "NULL" in output:
+        if result.returncode != 0:
+            stderr = result.stderr.strip()
+            if "missing value" in stderr or "missing value" in output:
+                return 0, None
+            return 0, "Could not read Messages badge (check Accessibility permissions)"
+        if not output or output == "missing value":
             return 0, None
-        match = re.search(r'"label"="(\d+)"', output)
-        if match:
-            return int(match.group(1)), None
-        return 0, f"Unexpected lsappinfo output"
+        try:
+            return int(output), None
+        except ValueError:
+            return 0, None
     except FileNotFoundError:
-        return 0, "lsappinfo not found (macOS only)"
+        return 0, "osascript not found (macOS only)"
     except subprocess.TimeoutExpired:
-        return 0, "lsappinfo timed out"
+        return 0, "osascript timed out"
     except Exception as e:
         return 0, str(e)
 

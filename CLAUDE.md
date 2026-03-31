@@ -54,24 +54,28 @@ The favicon is rendered client-side: a green iMessage-style speech bubble, with 
 - **Commit format**: Conventional commits — `feat:`, `fix:`, `docs:`, `chore:`
 - **Issue closing**: Each issue needs its own `closes` keyword: `Closes #1, closes #2`
 
-## How lsappinfo Works
+## How the Dock Badge Read Works
 
-```bash
-lsappinfo -all info -only StatusLabel com.apple.MobileSMS
+```applescript
+tell application "System Events" to tell process "Dock"
+    return value of attribute "AXStatusLabel" of UI element "Messages" of list 1
+end tell
 ```
 
-Returns:
-- `"StatusLabel"=[ NULL ]` — Messages running, 0 unread
-- `"StatusLabel"=[ "label"="5" ]` — Messages running, 5 unread
-- Empty output — Messages not running
+Returns the integer badge count (e.g., `3`), or `missing value` when badge is 0.
 
-This matches the actual dock badge exactly, unlike direct SQLite queries on `chat.db` which return stale iCloud sync data.
+This reads the actual dock badge via the macOS Accessibility API. It requires the calling process (Terminal, Python, etc.) to have **Accessibility permission** (System Settings > Privacy & Security > Accessibility).
+
+### Why not other approaches?
+
+- **`lsappinfo`**: Returns `NULL` for Messages on macOS Tahoe even when the badge is visible. Messages doesn't use the standard `NSDockTile.badgeLabel` API.
+- **SQLite on `chat.db`**: `is_read` flag has massive stale data from iCloud sync (1840 phantom unreads vs actual 0). `last_read_message_timestamp` is also unreliable.
 
 ## Decision Log
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
-| 2026-03-31 | Use `lsappinfo` instead of SQLite on `chat.db` | Direct DB queries return stale iCloud sync data (1840 phantom unreads vs actual 0). `lsappinfo` returns the exact dock badge count. |
+| 2026-03-31 | Use Dock Accessibility API (`AXStatusLabel`) instead of `lsappinfo` or SQLite | `lsappinfo` returns NULL for Messages on Tahoe. SQLite `chat.db` has stale iCloud sync data. The Dock accessibility API returns the exact visible badge. |
 | 2026-03-31 | Single-file, stdlib-only Python server | Zero supply chain risk, no pip install needed, simplest possible deployment. |
 | 2026-03-31 | Client-side Canvas for favicon rendering | Avoids Pillow or any server-side image dependency. Browser Canvas API draws the bubble + badge. |
 | 2026-03-31 | Bind to `0.0.0.0` by default | Primary use case is LAN access from another machine. Configurable via `--bind` for localhost-only. |
