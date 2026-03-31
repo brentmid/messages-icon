@@ -14,12 +14,29 @@ Pin it as a tab, or create a web app (e.g., in Microsoft Edge or Chrome) to get 
 ## Quick Start
 
 ```bash
+# Basic (HTTP) — works for browser tabs
 python3 server.py
+
+# With HTTPS — required for PWA dock badge updates
+python3 server.py --https
 ```
 
-Then open `http://localhost:8429` in your browser. From another machine on your LAN, use `http://<your-mac-ip>:8429`.
+Then open `https://localhost:8429` (or `http://` without `--https`) in your browser. From another machine on your LAN, use `https://<your-mac-ip>:8429`.
 
-To create a persistent "app" in Edge: navigate to the URL, then **Settings > Apps > Install this site as an app**.
+To create a persistent "app" in Edge: navigate to the URL, then **Settings > Apps > Install this site as an app**. The dock icon badge updates automatically when using HTTPS.
+
+### HTTPS Setup
+
+HTTPS is required for the PWA Badging API, which updates the dock icon badge. On first run with `--https`, a self-signed certificate is auto-generated in `./certs/`.
+
+To avoid browser certificate warnings, trust it in your system keychain:
+
+```bash
+sudo security add-trusted-cert -d -r trustRoot \
+  -k /Library/Keychains/System.keychain certs/cert.pem
+```
+
+You only need to do this once. The certificate is valid for 10 years.
 
 ## Auto-Start (LaunchAgent)
 
@@ -48,6 +65,8 @@ To customize port, poll interval, or bind address, add flags to the `ProgramArgu
 | Port | `--port` | `MESSAGES_ICON_PORT` | `8429` |
 | Poll interval (seconds) | `--poll-interval` | `MESSAGES_ICON_POLL_INTERVAL` | `30` |
 | Bind address | `--bind` | `MESSAGES_ICON_BIND` | `0.0.0.0` |
+| Enable HTTPS | `--https` | `MESSAGES_ICON_HTTPS` | `false` |
+| Certificate directory | `--cert-dir` | `MESSAGES_ICON_CERT_DIR` | `./certs` |
 
 ```bash
 # Examples

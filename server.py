@@ -5,8 +5,11 @@ import argparse
 import json
 import os
 import re
+import ssl
 import subprocess
+import sys
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from pathlib import Path
 
 HTML_TEMPLATE = '''<!DOCTYPE html>
 <html lang="en">
@@ -99,44 +102,17 @@ function drawFavicon(count) {{
     canvas.height = size;
     ctx.clearRect(0, 0, size, size);
 
-    // Green speech bubble (iMessage style)
+    // Green speech bubble — centered, transparent background;
+    // the PWA Badging API handles the count on the dock icon.
     ctx.fillStyle = '#34C759';
     ctx.beginPath();
-    // Main bubble body — rounded rectangle
-    ctx.roundRect(2, 2, 52, 38, 10);
+    ctx.roundRect(8, 8, 44, 32, 8);
     ctx.fill();
-    // Tail — bottom-left pointer
     ctx.beginPath();
-    ctx.moveTo(8, 36);
-    ctx.lineTo(2, 50);
-    ctx.lineTo(22, 38);
+    ctx.moveTo(14, 37);
+    ctx.lineTo(8, 50);
+    ctx.lineTo(26, 38);
     ctx.fill();
-
-    if (count > 0) {{
-        const label = count > 99 ? '99+' : String(count);
-
-        // Red badge — pill shape for multi-digit, circle for single
-        ctx.fillStyle = '#FF3B30';
-        const bx = 46, by = 12;
-        const bh = 22;
-        const bw = Math.max(bh, label.length * 10 + 10);
-        ctx.beginPath();
-        ctx.roundRect(bx - bw/2, by - bh/2, bw, bh, bh/2);
-        ctx.fill();
-
-        // White border
-        ctx.strokeStyle = '#FFFFFF';
-        ctx.lineWidth = 2;
-        ctx.stroke();
-
-        // Count text — bold, sized to fit
-        const fontSize = label.length > 2 ? 11 : 14;
-        ctx.fillStyle = '#FFFFFF';
-        ctx.font = `bold ${{fontSize}}px -apple-system, "SF Pro", sans-serif`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(label, bx, by + 1);
-    }}
 
     // Update favicon — replace the link element to force Edge/PWA to pick up changes
     const dataUrl = canvas.toDataURL('image/png');
@@ -340,6 +316,59 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
 
+def _ensure_cert(cert_dir, extra_hosts=None):
+    """Generate a self-signed certificate if one doesn't exist.
+
+    The certificate includes localhost, 127.0.0.1, the machine's hostname,
+    and any extra hostnames passed via --hostname.
+
+    Returns (cert_path, key_path).
+    """
+    cert_dir = Path(cert_dir)
+    cert_path = cert_dir / "cert.pem"
+    key_path = cert_dir / "key.pem"
+
+    if cert_path.exists() and key_path.exists():
+        return str(cert_path), str(key_path)
+
+    cert_dir.mkdir(parents=True, exist_ok=True)
+
+    # Build SAN list: localhost + machine hostname + extras
+    import socket
+    hostname = socket.gethostname().replace(".local", "")
+    san_entries = ["DNS:localhost", f"DNS:{hostname}", f"DNS:{hostname}.local",
+                   "IP:127.0.0.1"]
+    if extra_hosts:
+        for h in extra_hosts:
+            san_entries.append(f"DNS:{h}")
+
+    san_string = ",".join(san_entries)
+    print("Generating self-signed TLS certificate...")
+    print(f"  SANs: {san_string}")
+    result = subprocess.run(
+        [
+            "openssl", "req", "-x509", "-newkey", "rsa:2048",
+            "-keyout", str(key_path), "-out", str(cert_path),
+            "-days", "3650", "-nodes",
+            "-subj", "/CN=messages-icon",
+            "-addext", f"subjectAltName={san_string}",
+        ],
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        print(f"Failed to generate certificate: {result.stderr}", file=sys.stderr)
+        sys.exit(1)
+
+    print(f"  Certificate: {cert_path}")
+    print(f"  Key: {key_path}")
+    print()
+    print("  To avoid browser warnings, trust the certificate:")
+    print(f"    sudo security add-trusted-cert -d -r trustRoot \\")
+    print(f"      -k /Library/Keychains/System.keychain {cert_path}")
+    print()
+    return str(cert_path), str(key_path)
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Apple Messages unread count favicon server",
@@ -359,13 +388,39 @@ def main():
         default=os.environ.get("MESSAGES_ICON_BIND", "0.0.0.0"),
         help="Address to bind to (default: 0.0.0.0)",
     )
+    parser.add_argument(
+        "--https", action="store_true",
+        default=os.environ.get("MESSAGES_ICON_HTTPS", "").lower() in ("1", "true", "yes"),
+        help="Enable HTTPS with a self-signed certificate (required for PWA badge)",
+    )
+    parser.add_argument(
+        "--cert-dir", type=str,
+        default=os.environ.get("MESSAGES_ICON_CERT_DIR",
+                               os.path.join(os.path.dirname(__file__), "certs")),
+        help="Directory for TLS certificate and key (default: ./certs)",
+    )
+    parser.add_argument(
+        "--hostname", type=str, action="append",
+        help="Extra hostname(s) for the TLS certificate SAN (repeatable)",
+    )
     args = parser.parse_args()
 
     Handler.poll_interval = args.poll_interval
 
     server = HTTPServer((args.bind, args.port), Handler)
-    print(f"messages-icon serving on http://{args.bind}:{args.port}")
+
+    scheme = "http"
+    if args.https:
+        cert_path, key_path = _ensure_cert(args.cert_dir, args.hostname)
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ctx.load_cert_chain(cert_path, key_path)
+        server.socket = ctx.wrap_socket(server.socket, server_side=True)
+        scheme = "https"
+
+    print(f"messages-icon serving on {scheme}://{args.bind}:{args.port}")
     print(f"  Poll interval: {args.poll_interval}s")
+    if args.https:
+        print(f"  TLS: enabled (PWA badge supported)")
     print(f"  Press Ctrl+C to stop")
     try:
         server.serve_forever()

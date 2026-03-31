@@ -1,7 +1,9 @@
-# Secrets
+# Secrets and certificates
 .env
 .env.local
 .env.*.local
+certs/
+*.pem
 
 # Python
 __pycache__/
