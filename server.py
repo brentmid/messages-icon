@@ -19,12 +19,28 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     <link id="favicon" rel="icon" type="image/png" href="/apple-touch-icon.png">
     <link id="favicon-32" rel="icon" type="image/png" sizes="32x32" href="/apple-touch-icon.png">
     <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+    <link rel="manifest" href="/manifest.json">
     <style>
         * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        :root {{
+            --bg: #1c1c1e;
+            --fg: #f5f5f7;
+            --muted: #98989d;
+            --green: #34C759;
+            --red: #FF3B30;
+            --warn: #FF9F0A;
+        }}
+        @media (prefers-color-scheme: light) {{
+            :root {{
+                --bg: #f5f5f7;
+                --fg: #1c1c1e;
+                --muted: #6e6e73;
+            }}
+        }}
         body {{
             font-family: -apple-system, BlinkMacSystemFont, "SF Pro", "Helvetica Neue", sans-serif;
-            background: #1c1c1e;
-            color: #f5f5f7;
+            background: var(--bg);
+            color: var(--fg);
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -36,20 +52,29 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             font-size: 8rem;
             font-weight: 700;
             line-height: 1;
-            color: #34C759;
-            transition: color 0.3s;
+            color: var(--green);
+            transition: color 0.3s, transform 0.2s;
         }}
         .count.has-messages {{
-            color: #FF3B30;
+            color: var(--red);
+        }}
+        .count.bump {{
+            transform: scale(1.1);
         }}
         .label {{
             font-size: 1.25rem;
-            color: #98989d;
+            color: var(--muted);
             margin-top: 0.5rem;
+        }}
+        .updated {{
+            font-size: 0.75rem;
+            color: var(--muted);
+            margin-top: 1.5rem;
+            opacity: 0.6;
         }}
         .error {{
             font-size: 0.875rem;
-            color: #FF9F0A;
+            color: var(--warn);
             margin-top: 1rem;
         }}
         .error:empty {{ display: none; }}
@@ -59,6 +84,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     <div class="count" id="count">-</div>
     <div class="label" id="label">Loading...</div>
     <div class="error" id="error"></div>
+    <div class="updated" id="updated"></div>
     <canvas id="favicon-canvas" width="64" height="64" style="display:none"></canvas>
 
 <script>
@@ -112,22 +138,39 @@ function drawFavicon(count) {{
         ctx.fillText(label, bx, by + 1);
     }}
 
-    // Update favicon link
-    document.getElementById('favicon').href = canvas.toDataURL('image/png');
+    // Update favicon — replace the link element to force Edge/PWA to pick up changes
+    const dataUrl = canvas.toDataURL('image/png');
+    const oldLink = document.getElementById('favicon');
+    const newLink = oldLink.cloneNode(false);
+    newLink.href = dataUrl;
+    oldLink.parentNode.replaceChild(newLink, oldLink);
 
-    // Also update 32x32 variant for browsers that prefer it
-    const link32 = document.getElementById('favicon-32');
-    if (link32) link32.href = canvas.toDataURL('image/png');
+    const oldLink32 = document.getElementById('favicon-32');
+    if (oldLink32) {{
+        const newLink32 = oldLink32.cloneNode(false);
+        newLink32.href = dataUrl;
+        oldLink32.parentNode.replaceChild(newLink32, oldLink32);
+    }}
 }}
+
+let lastCount = -1;
 
 function update(data) {{
     const count = data.unread;
     const countEl = document.getElementById('count');
     const labelEl = document.getElementById('label');
     const errorEl = document.getElementById('error');
+    const updatedEl = document.getElementById('updated');
 
     countEl.textContent = count;
     countEl.className = count > 0 ? 'count has-messages' : 'count';
+
+    // Bump animation when count changes
+    if (lastCount !== -1 && count !== lastCount) {{
+        countEl.classList.add('bump');
+        setTimeout(() => countEl.classList.remove('bump'), 200);
+    }}
+    lastCount = count;
 
     if (count === 0) {{
         labelEl.textContent = 'No unread messages';
@@ -137,10 +180,20 @@ function update(data) {{
         labelEl.textContent = count + ' unread messages';
     }}
 
-    document.title = count > 0 ? '(' + count + ') Messages' : 'Messages';
+    document.title = 'Messages';
     errorEl.textContent = data.error || '';
+    updatedEl.textContent = 'Updated ' + new Date().toLocaleTimeString();
 
     drawFavicon(count);
+
+    // PWA Badging API — updates the dock icon badge for installed web apps
+    if ('setAppBadge' in navigator) {{
+        if (count > 0) {{
+            navigator.setAppBadge(count);
+        }} else {{
+            navigator.clearAppBadge();
+        }}
+    }}
 }}
 
 async function poll() {{
@@ -159,6 +212,18 @@ setInterval(poll, POLL_INTERVAL);
 </body>
 </html>'''
 
+
+MANIFEST_JSON = json.dumps({
+    "name": "Messages",
+    "short_name": "Messages",
+    "start_url": "/",
+    "display": "standalone",
+    "background_color": "#1c1c1e",
+    "theme_color": "#34C759",
+    "icons": [
+        {"src": "/apple-touch-icon.png", "sizes": "180x180", "type": "image/svg+xml"},
+    ],
+})
 
 # Pre-render a 180x180 apple-touch-icon as an SVG served with image/svg+xml
 APPLE_TOUCH_ICON_SVG = '''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180">
@@ -224,6 +289,8 @@ class Handler(BaseHTTPRequestHandler):
         elif self.path == "/apple-touch-icon.png" or \
              self.path == "/apple-touch-icon-precomposed.png":
             self._serve_touch_icon()
+        elif self.path == "/manifest.json":
+            self._serve_manifest()
         else:
             self.send_error(404)
 
@@ -235,6 +302,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
         self.end_headers()
         self.wfile.write(body)
 
@@ -255,6 +323,14 @@ class Handler(BaseHTTPRequestHandler):
         body = APPLE_TOUCH_ICON_SVG.encode("utf-8")
         self.send_response(200)
         self.send_header("Content-Type", "image/svg+xml")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _serve_manifest(self):
+        body = MANIFEST_JSON.encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "application/manifest+json")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
