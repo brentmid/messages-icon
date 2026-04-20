@@ -8,7 +8,7 @@ import re
 import ssl
 import subprocess
 import sys
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 HTML_TEMPLATE = '''<!DOCTYPE html>
@@ -407,7 +407,7 @@ def main():
 
     Handler.poll_interval = args.poll_interval
 
-    server = HTTPServer((args.bind, args.port), Handler)
+    server = ThreadingHTTPServer((args.bind, args.port), Handler)
 
     scheme = "http"
     if args.https:
