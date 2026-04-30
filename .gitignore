@@ -23,5 +23,8 @@ venv/
 .DS_Store
 ._*
 
+# Compiled helper binary (build with helper/build.sh)
+helper/dock-badge-reader
+
 # Claude Code local settings
 .claude/

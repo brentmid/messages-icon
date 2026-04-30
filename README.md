@@ -6,19 +6,25 @@ Pin it as a tab, or create a web app (e.g., in Microsoft Edge or Chrome) to get 
 
 ## Requirements
 
-- **macOS** (uses the Dock Accessibility API via `osascript`)
+- **macOS** (uses the Dock Accessibility API)
 - **Python 3.11+** (stdlib only — no `pip install` needed)
+- **Xcode Command Line Tools** (for building the dock-badge helper — `swiftc`, `codesign`)
 - **Messages app** must be running (the server reads the dock badge count)
-- **Accessibility permission** for Terminal (or whichever app runs the server) — grant in System Settings > Privacy & Security > Accessibility
+- **Accessibility permission** for the compiled `helper/dock-badge-reader` binary — grant in System Settings > Privacy & Security > Accessibility (see Quick Start below)
 
 ## Quick Start
 
 ```bash
-# Basic (HTTP) — works for browser tabs
-python3 server.py
+# 1. Build the dock-badge helper (one-time)
+./helper/build.sh
 
-# With HTTPS — required for PWA dock badge updates
-python3 server.py --https
+# 2. Grant Accessibility to the helper:
+#    System Settings → Privacy & Security → Accessibility → +
+#    Add: <repo>/helper/dock-badge-reader
+
+# 3. Run the server
+python3 server.py             # HTTP — works for browser tabs
+python3 server.py --https     # HTTPS — required for PWA dock badge
 ```
 
 Then open `https://localhost:8429` (or `http://` without `--https`) in your browser. From another machine on your LAN, use `https://<your-mac-ip>:8429`.
@@ -58,7 +64,7 @@ launchctl unload ~/Library/LaunchAgents/com.example.messages-icon.plist
 
 To customize port, poll interval, or bind address, add flags to the `ProgramArguments` array in the plist (e.g., `--port`, `--poll-interval`, `--bind`).
 
-> **Note:** The Python process running the server needs **Accessibility permission** (System Settings > Privacy & Security > Accessibility) to read the dock badge.
+> **Note:** Accessibility permission must be granted to the **compiled helper binary** (`helper/dock-badge-reader`), not to Python. The server invokes the helper as a subprocess; the helper is the TCC subject. See the Quick Start for the build/grant flow.
 
 ## Configuration
 
@@ -79,7 +85,9 @@ python3 server.py --bind 127.0.0.1  # localhost only
 
 ## How It Works
 
-The server uses the macOS Dock Accessibility API (via `osascript`) to read the Messages app's dock badge count — the exact number macOS displays on the Messages icon in your Dock. This is more reliable than `lsappinfo` (which returns NULL for Messages on recent macOS) or querying the Messages SQLite database directly (which returns stale data due to iCloud sync).
+The server uses the macOS Dock Accessibility API (via a small compiled Swift helper at `helper/dock-badge-reader`) to read the Messages app's dock badge count — the exact number macOS displays on the Messages icon in your Dock. This is more reliable than `lsappinfo` (which returns NULL for Messages on recent macOS) or querying the Messages SQLite database directly (which returns stale data due to iCloud sync).
+
+The helper exists so the TCC Accessibility grant binds to a tiny single-purpose binary with a stable signature, rather than to whichever Homebrew Python the LaunchAgent currently resolves. Homebrew Python upgrades silently invalidate TCC grants on the interpreter; the compiled helper avoids that whole class of breakage. See [issue #13](https://github.com/brentmid/messages-icon/issues/13) for the full reasoning.
 
 The webpage polls `/api/count` at the configured interval. When installed as a PWA (via Edge or Chrome) over HTTPS, it uses the Badging API (`navigator.setAppBadge()`) to show the unread count on the dock icon. The favicon is a green iMessage-style speech bubble rendered via Canvas.
 
@@ -91,10 +99,10 @@ The webpage polls `/api/count` at the configured interval. When installed as a P
 {"unread": 3}
 ```
 
-Or, if there's an issue (e.g., Accessibility permission not granted):
+Or, if there's an issue (e.g., Accessibility permission not granted to the helper, or the helper isn't built):
 
 ```json
-{"unread": 0, "error": "Could not read Messages badge (check Accessibility permissions)"}
+{"unread": 0, "error": "Accessibility permission missing for dock-badge-reader helper"}
 ```
 
 ## Privacy

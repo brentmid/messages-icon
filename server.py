@@ -211,45 +211,41 @@ APPLE_TOUCH_ICON_SVG = '''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1
 </svg>'''
 
 
+HELPER_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "helper", "dock-badge-reader")
+
+
 def get_unread_count():
-    """Read the Messages dock badge count via the Dock accessibility API.
+    """Read the Messages dock badge count via a compiled Swift helper.
 
-    Uses AppleScript to query the AXStatusLabel attribute of the Messages
-    element in the Dock. This matches the actual dock badge exactly, unlike
-    lsappinfo (which returns NULL for Messages on macOS Tahoe) or direct
-    SQLite queries on chat.db (which return stale iCloud sync data).
+    The helper (helper/dock-badge-reader) calls the Accessibility API
+    directly to read AXStatusLabel on the Messages dock tile. The helper
+    is the TCC subject — Accessibility permission must be granted to it
+    in System Settings, not to the Python interpreter.
 
-    Requires: Accessibility permission for the calling process.
+    See helper/build.sh for build instructions and the project's CLAUDE.md
+    for the rationale (issue #13).
 
     Returns:
         tuple: (count: int, error: str | None)
     """
     try:
         result = subprocess.run(
-            ["osascript", "-e",
-             'tell application "System Events" to tell process "Dock" '
-             'to return value of attribute "AXStatusLabel" of UI element '
-             '"Messages" of list 1'],
-            capture_output=True, text=True, timeout=5,
+            [HELPER_PATH], capture_output=True, text=True, timeout=5,
         )
-        output = result.stdout.strip()
-        if result.returncode != 0:
-            stderr = result.stderr.strip()
-            if "missing value" in stderr or "missing value" in output:
-                return 0, None
-            return 0, "Could not read Messages badge (check Accessibility permissions)"
-        if not output or output == "missing value":
-            return 0, None
+    except FileNotFoundError:
+        return 0, f"Helper not built. Run {os.path.dirname(HELPER_PATH)}/build.sh"
+    except subprocess.TimeoutExpired:
+        return 0, "Dock badge helper timed out"
+
+    if result.returncode == 0:
         try:
-            return int(output), None
+            return int(result.stdout.strip()), None
         except ValueError:
             return 0, None
-    except FileNotFoundError:
-        return 0, "osascript not found (macOS only)"
-    except subprocess.TimeoutExpired:
-        return 0, "osascript timed out"
-    except Exception as e:
-        return 0, str(e)
+
+    if result.returncode == 3:
+        return 0, "Accessibility permission missing for dock-badge-reader helper"
+    return 0, f"dock-badge-reader exited {result.returncode}: {result.stderr.strip()}"
 
 
 class Handler(BaseHTTPRequestHandler):
