@@ -162,9 +162,13 @@ function update(data) {{
 
     drawFavicon(count);
 
-    // PWA Badging API — updates the dock icon badge for installed web apps
+    // PWA Badging API — updates the dock icon badge for installed web apps.
+    // On error, show an indeterminate dot so a broken read isn't indistinguishable
+    // from "0 unread" (see issue #14).
     if ('setAppBadge' in navigator) {{
-        if (count > 0) {{
+        if (data.error) {{
+            navigator.setAppBadge();
+        }} else if (count > 0) {{
             navigator.setAppBadge(count);
         }} else {{
             navigator.clearAppBadge();
@@ -179,6 +183,9 @@ async function poll() {{
         update(data);
     }} catch (e) {{
         document.getElementById('error').textContent = 'Connection lost';
+        if ('setAppBadge' in navigator) {{
+            navigator.setAppBadge();
+        }}
     }}
 }}
 
