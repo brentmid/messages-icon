@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-messages-icon is a lightweight, zero-dependency Python HTTP server that exposes Apple Messages' unread count as a dynamic browser favicon and PWA dock badge. Install it as a web app (Edge/Chrome) on any machine on your LAN to see your unread message count without needing iCloud sign-in.
+messages-icon is a lightweight, zero-dependency Python HTTP server that exposes Apple Messages' unread count as a dynamic browser favicon and PWA dock badge. Install it as a web app (Edge/Chrome) on another machine to see your unread message count without needing iCloud sign-in. The server has no auth, so the bind address is the access control: bind to a Tailscale IP (the deployed configuration) rather than `0.0.0.0`.
 
 ## Development Environment
 
@@ -103,6 +103,7 @@ Apply the same pattern to any future per-project TCC helper. See `~/bin/CLAUDE.m
 | 2026-03-31 | Single-file, stdlib-only Python server | Zero supply chain risk, no pip install needed, simplest possible deployment. |
 | 2026-03-31 | Client-side Canvas for favicon rendering | Avoids Pillow or any server-side image dependency. Browser Canvas API draws the bubble. |
 | 2026-03-31 | Bind to `0.0.0.0` by default | Primary use case is LAN access from another machine. Configurable via `--bind` for localhost-only. |
+| 2026-09-16 | Deployed LaunchAgent binds to the Tailscale IP via `MESSAGES_ICON_BIND`; `0.0.0.0` stays the code default only for first-run convenience | Consistency with the sibling services on the same host (portfolio-agent :8430, tv-tracker :8431), which bind the Tailscale IP because they have no auth. The original all-interfaces choice was a generic default, not a security decision, and the "unread count isn't sensitive" rationale was added after the fact. The client PWA was already reaching the server over the Tailscale address, so nothing changed for it. Recorded in `~/bin/edr/issues/0058`. |
 | 2026-03-31 | HTTPS with auto-generated self-signed cert | PWA Badging API (`navigator.setAppBadge()`) requires a secure context (HTTPS). Auto-generate cert on first `--https` run, include machine hostname in SANs. |
 | 2026-03-31 | No count in favicon, use PWA Badging API | Drawing a red badge in the Canvas AND having the PWA badge creates a "double badge". Favicon is just the green bubble; the OS-level PWA badge shows the count. |
 | 2026-03-31 | PWA manifest (`/manifest.json`) | Enables "Install as app" in Edge/Chrome and declares the app as standalone for proper PWA behavior. |

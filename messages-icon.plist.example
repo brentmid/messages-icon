@@ -10,6 +10,14 @@
         <string>/opt/homebrew/bin/python3</string>
         <string>/path/to/messages-icon/server.py</string>
     </array>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <!-- Bind only to the address remote clients should use. A Tailscale IP
+             keeps the server off the physical LAN with no auth needed;
+             0.0.0.0 exposes it to every device on the LAN. -->
+        <key>MESSAGES_ICON_BIND</key>
+        <string>YOUR_TAILSCALE_IP</string>
+    </dict>
     <key>RunAtLoad</key>
     <true/>
     <key>KeepAlive</key>

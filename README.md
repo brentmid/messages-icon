@@ -27,7 +27,7 @@ python3 server.py             # HTTP — works for browser tabs
 python3 server.py --https     # HTTPS — required for PWA dock badge
 ```
 
-Then open `https://localhost:8429` (or `http://` without `--https`) in your browser. From another machine on your LAN, use `https://<your-mac-ip>:8429`.
+Then open `https://localhost:8429` (or `http://` without `--https`) in your browser. From another machine, use `https://<your-mac-ip>:8429` — see [Bind address](#bind-address) for which address to expose.
 
 To create a persistent "app" in Edge: navigate to the URL, then **Settings > Apps > Install this site as an app**. The dock icon badge updates automatically when using HTTPS.
 
@@ -62,7 +62,17 @@ launchctl load ~/Library/LaunchAgents/com.example.messages-icon.plist
 launchctl unload ~/Library/LaunchAgents/com.example.messages-icon.plist
 ```
 
-To customize port, poll interval, or bind address, add flags to the `ProgramArguments` array in the plist (e.g., `--port`, `--poll-interval`, `--bind`).
+To customize port, poll interval, or bind address, add flags to the `ProgramArguments` array in the plist (e.g., `--port`, `--poll-interval`, `--bind`) or set the matching environment variables in an `EnvironmentVariables` dict (the example plist does this for `MESSAGES_ICON_BIND`).
+
+### Bind address
+
+The server has no authentication, so the bind address is the access control. The code default is `0.0.0.0` (every interface) for a quick first run, but for an always-on LaunchAgent bind to a single address that only your own devices can reach:
+
+- **Tailscale IP** (recommended): `MESSAGES_ICON_BIND=<tailscale-ip>`. Only devices on your tailnet can connect; the server is invisible to the physical LAN. Use this if the machine that displays the badge is on the same tailnet.
+- **`127.0.0.1`**: local browser only.
+- **`0.0.0.0`**: reachable by every device on the LAN, including IoT and guest devices. Fine for a trusted network, but prefer one of the above.
+
+Whatever address you pick, the URL you install as a PWA must match a name in the certificate's SANs (see HTTPS Setup); use `--hostname` when generating the certificate if you connect by a name other than the machine's hostname.
 
 > **Note:** Accessibility permission must be granted to the **compiled helper binary** (`helper/dock-badge-reader`), not to Python. The server invokes the helper as a subprocess; the helper is the TCC subject. See the Quick Start for the build/grant flow.
 
