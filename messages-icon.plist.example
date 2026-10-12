@@ -7,7 +7,7 @@
     <string>com.example.messages-icon</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/opt/homebrew/bin/python3</string>
+        <string>/opt/homebrew/opt/python@3.14/libexec/bin/python3</string>
         <string>/path/to/messages-icon/server.py</string>
     </array>
     <key>EnvironmentVariables</key>
